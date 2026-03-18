@@ -264,6 +264,38 @@ textarea { resize: vertical; min-height: 68px; line-height: 1.6; }
 .seg-red   .seg-value { color: var(--red);   text-shadow: 0 0 14px rgba(239,68,68,.25); }
 @media(max-width:600px) { .metrics-grid { grid-template-columns: 1fr; } .seg-value { font-size: 22px; } }
 
+/* ── Process Selector ── */
+.process-selector {
+  display: flex;
+  gap: 0;
+  background: var(--s2);
+  border: 1px solid var(--border2);
+  border-radius: var(--r-sm);
+  padding: 3px;
+  margin-bottom: 16px;
+  width: fit-content;
+}
+.proc-btn {
+  padding: 7px 20px;
+  border: none;
+  border-radius: calc(var(--r-sm) - 2px);
+  background: transparent;
+  color: var(--muted2);
+  font-family: var(--ff-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all .18s;
+}
+.proc-btn.active {
+  background: var(--green);
+  color: #060c18;
+  font-weight: 700;
+}
+.proc-btn:not(.active):hover { color: var(--text); background: var(--s3); }
+
 /* ── Animated Hourglass ── */
 #prog-pct-wrap { display: flex; align-items: center; gap: 5px; }
 .hg-anim { display: inline-block; animation: hgFlip 2s steps(1) infinite; font-size: 14px; }
@@ -402,21 +434,28 @@ textarea { resize: vertical; min-height: 68px; line-height: 1.6; }
       <!-- DAILY TARGET & PROGRESS -->
       <div class="panel">
         <div class="ptitle">Daily Target Progress</div>
+
+        <!-- Process Selector -->
+        <div class="process-selector">
+          <button class="proc-btn active" id="proc-dhisha" onclick="setProcess('dhisha')">🕐 Dhisha</button>
+          <button class="proc-btn" id="proc-zomato" onclick="setProcess('zomato')">🔢 Zomato</button>
+        </div>
+
         <div class="prog-wrap">
           <div class="prog-row">
             <div style="flex:1">
-              <label>Current Duration (MM:SS)</label>
-              <input type="text" id="cur-dur" placeholder="02:30" pattern="\d{1,2}:\d{2}">
+              <label id="cur-dur-label">Current Duration (MM:SS)</label>
+              <input type="text" id="cur-dur" placeholder="02:30">
             </div>
             <button class="btn btn-green" id="btn-upd-prog" style="margin-top:18px;padding:9px 14px;font-size:10px;">Update</button>
           </div>
           <div class="pbar-track"><div class="pbar-fill" id="pbar"></div></div>
-          <div class="pbar-labels"><span id="prog-text">00:00:00 / —</span><span id="prog-pct-wrap"><span id="hg-icon" class="hg-anim">⏳</span><span id="prog-pct" style="font-size:16px;font-weight:700;color:var(--green);">0%</span></span></div>
+          <div class="pbar-labels"><span id="prog-text">0 / —</span><span id="prog-pct-wrap"><span id="hg-icon" class="hg-anim">⏳</span><span id="prog-pct" style="font-size:16px;font-weight:700;color:var(--green);">0%</span></span></div>
         </div>
         <div class="final-wrap">
-          <label>⚠ Final Target (MM:SS) — required before clock-out</label>
-          <input type="text" id="final-target" placeholder="02:30" pattern="\d{1,2}:\d{2}" style="margin-top:6px;">
-          <div class="dur-hint">Format: MM:SS — e.g. 02:30 = 2 mins 30 secs, 90:00 = 90 minutes</div>
+          <label id="final-target-label">⚠ Final Target (MM:SS) — required before clock-out</label>
+          <input type="text" id="final-target" placeholder="02:30" style="margin-top:6px;">
+          <div class="dur-hint" id="dur-hint-text">Format: MM:SS — e.g. 02:30 = 2 mins 30 secs, 90:00 = 90 minutes</div>
         </div>
       </div>
 
@@ -435,7 +474,7 @@ textarea { resize: vertical; min-height: 68px; line-height: 1.6; }
               </select>
             </div>
             <div style="flex:1;margin-left:8px;">
-              <label>Duration this hour (MM:SS)</label>
+              <label id="task-dur-label">Duration this hour (MM:SS)</label>
               <input type="text" id="task-dur" placeholder="02:30" disabled>
             </div>
           </div>
@@ -535,12 +574,12 @@ textarea { resize: vertical; min-height: 68px; line-height: 1.6; }
 ═══════════════════════════════════════════════════════════ */
 const CONFIG = {
   // Paste your deployed Google Apps Script Web App URL here:
-  APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbzeWwVMa5myt2Rsimv0uywrUzdLgEjndLq2O9Ug1exKcteCsicS2FD8FPV6HFIXiQT7/exec',
+  APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbwR4ri7dY3kxiG2gPD77iR0d_-FdnzWix4FO-4GaVrlCdPHjZ7calpsqmEJyvWpmn5Fzw/exec',
 
-  // EmailJS — sign up at https://emailjs.com (free)  
+  // EmailJS — sign up at https://emailjs.com (free)
   EMAILJS_SERVICE_ID:  'service_a2gw4aw',
   EMAILJS_TEMPLATE_ID: 'template_aqp7ojj',
-  EMAILJS_PUBLIC_KEY:  'ogon2tHgn2U3SEedB', 
+  EMAILJS_PUBLIC_KEY:  'ogon2tHgn2U3SEedB',
 
   IDLE_MS: 60 * 1000,  // 1 minute idle threshold
 };
@@ -561,11 +600,53 @@ let S = {
   tasks:          [],     // [{slot,text,dur,ts}]
   idles:          [],     // [{start,end,durSecs}]
   idleStart:      null,
-  currentDurSecs: 0,
+  currentDurSecs: 0,      // for Dhisha: seconds; for Zomato: count (stored as-is)
   finalTarget:    '',
-  lateMinutes:    0,      // minutes late on clock-in
-  earlyClockOut:  false,  // flagged for non-compliance email
+  lateMinutes:    0,
+  earlyClockOut:  false,
+  process:        'dhisha',  // 'dhisha' | 'zomato'
+  currentCount:   0,         // Zomato: numeric count
 };
+
+// ── Process helpers ────────────────────────────────────────
+function isZomato() { return S.process === 'zomato'; }
+
+function setProcess(proc) {
+  S.process = proc;
+  saveS();
+
+  // Toggle active button
+  document.getElementById('proc-dhisha').classList.toggle('active', proc === 'dhisha');
+  document.getElementById('proc-zomato').classList.toggle('active', proc === 'zomato');
+
+  if (proc === 'zomato') {
+    // Labels
+    document.getElementById('cur-dur-label').textContent     = 'Current Count (number)';
+    document.getElementById('final-target-label').textContent = '⚠ Final Target (number) — required before clock-out';
+    document.getElementById('task-dur-label').textContent    = 'Count this hour (number)';
+    document.getElementById('dur-hint-text').textContent     = 'Enter a number — e.g. 25 IDs uploaded this hour';
+    // Placeholders
+    document.getElementById('cur-dur').placeholder    = 'e.g. 25';
+    document.getElementById('final-target').placeholder = 'e.g. 100';
+    document.getElementById('task-dur').placeholder   = 'e.g. 25';
+  } else {
+    document.getElementById('cur-dur-label').textContent     = 'Current Duration (MM:SS)';
+    document.getElementById('final-target-label').textContent = '⚠ Final Target (MM:SS) — required before clock-out';
+    document.getElementById('task-dur-label').textContent    = 'Duration this hour (MM:SS)';
+    document.getElementById('dur-hint-text').textContent     = 'Format: MM:SS — e.g. 02:30 = 2 mins 30 secs, 90:00 = 90 minutes';
+    document.getElementById('cur-dur').placeholder    = '02:30';
+    document.getElementById('final-target').placeholder = '02:30';
+    document.getElementById('task-dur').placeholder   = '02:30';
+  }
+
+  // Reset inputs and progress
+  document.getElementById('cur-dur').value    = '';
+  document.getElementById('final-target').value = '';
+  S.currentDurSecs = 0;
+  S.currentCount   = 0;
+  saveS();
+  updateProgress();
+}
 
 // Required shift: 7.5h enforced, 8h displayed
 const REQUIRED_SHIFT_SECS = 7.5 * 3600;   // 27000s — backend enforcement
@@ -623,15 +704,15 @@ const SHIFT_SLOTS = {
   ],
   // Night shift: 8:30 PM – 5:30 AM (9 one-hour slots, crosses midnight)
   night: [
-    '8:00 PM – 9:00 PM',
-    '9:00 PM – 10:00 PM',
-    '10:00 PM – 11:00 PM',
-    '11:00 PM – 12:00 AM',
-    '12:00 AM – 1:00 AM',
-    '1:00 AM – 2:00 AM',
-    '2:00 AM – 3:00 AM',
-    '3:00 AM – 4:00 AM',
-    '4:00 AM – 5:00 AM',
+    '8:30 PM – 9:30 PM',
+    '9:30 PM – 10:30 PM',
+    '10:30 PM – 11:30 PM',
+    '11:30 PM – 12:30 AM',
+    '12:30 AM – 1:30 AM',
+    '1:30 AM – 2:30 AM',
+    '2:30 AM – 3:30 AM',
+    '3:30 AM – 4:30 AM',
+    '4:30 AM – 5:30 AM',
   ],
 };
 
@@ -714,7 +795,7 @@ async function doLogin() {
   U = res.user;
   saveU();
   // Reset daily state for new session
-  S = { shiftActive:false, clockInTime:null, onBreak:false, breakStartTime:null, breaks:[], tasks:[], idles:[], idleStart:null, currentDurSecs:0, finalTarget:'' };
+  S = { shiftActive:false, clockInTime:null, onBreak:false, breakStartTime:null, breaks:[], tasks:[], idles:[], idleStart:null, currentDurSecs:0, finalTarget:'', lateMinutes:0, earlyClockOut:false, process:'dhisha', currentCount:0 };
   saveS();
   flushOfflineQueue();
   showDashboard();
@@ -738,6 +819,10 @@ function showDashboard() {
   document.getElementById('date-lbl').textContent = new Date().toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
 
   populateSlots();
+  // Auto-select process from sheet (U.process) on fresh login,
+  // otherwise restore from saved state (S.process for session continuity)
+  const activeProcess = U.process || S.process || 'dhisha';
+  setProcess(activeProcess);
   renderUI();
   if (S.shiftActive) {
     showClockInTime(S.clockInTime);
@@ -896,7 +981,7 @@ document.getElementById('btn-ci').addEventListener('click', async () => {
   resetIdle();
   requestNotifPermission();
 
-  const res = await api({ action:'clockIn', userId:U.userId, fullName:U.fullName, email:U.email, timestamp:now, lateMinutes:lateM });
+  const res = await api({ action:'clockIn', userId:U.userId, fullName:U.fullName, email:U.email, timestamp:now, lateMinutes:lateM, process:S.process });
   if (res.offline) toast('⚡ Offline — clock-in queued for sync.','warn');
   else {
     if (lateM > 0)
@@ -951,27 +1036,39 @@ document.getElementById('btn-co').addEventListener('click', async () => {
   if (S.onBreak) { toast('⚠ End your break before clocking out.','warn'); return; }
 
   const ft = document.getElementById('final-target').value.trim();
-  if (!ft)           { openM('m-final'); return; }
-  if (!isValidHMS(ft)) { openM('m-dur'); return; }
+  if (!ft) { openM('m-final'); return; }
+  if (!isZomato() && !isValidHMS(ft)) { openM('m-dur'); return; }
+  if (isZomato() && (isNaN(parseInt(ft)) || parseInt(ft) < 0)) {
+    toast('Final target must be a valid number.','warn'); return;
+  }
 
   S.finalTarget = ft;
 
   // ── Check compliance: target + shift hours ───────────────
-  const targetSecs  = hmsToSecs(U?.dailyTarget || '0') || 0;
   const shiftSecs   = S.clockInTime ? Math.round((Date.now()-new Date(S.clockInTime).getTime())/1000) : 0;
-  const targetMiss  = targetSecs > 0 && S.currentDurSecs < targetSecs;
   const shiftMiss   = shiftSecs < REQUIRED_SHIFT_SECS;
 
+  // Target check — differs by process
+  let targetMiss = false;
+  let targetRemStr = '';
+  if (isZomato()) {
+    const dailyTargetNum = parseInt(U?.dailyTargetCount) || parseInt(U?.dailyTargetNum) || parseInt(U?.dailyTarget) || 0;
+    targetMiss   = dailyTargetNum > 0 && (S.currentCount||0) < dailyTargetNum;
+    targetRemStr = String(dailyTargetNum - (S.currentCount||0)) + ' IDs remaining';
+  } else {
+    const targetSecs = hmsToSecs(U?.dailyTarget || '0') || 0;
+    targetMiss   = targetSecs > 0 && S.currentDurSecs < targetSecs;
+    targetRemStr = secsToMMSS(targetSecs - S.currentDurSecs) + ' remaining';
+  }
+
   if (targetMiss || shiftMiss) {
-    // Build a combined reason message
     const reasons = [];
     if (shiftMiss) {
       const remShift = secsToHMS(REQUIRED_SHIFT_SECS - shiftSecs);
       reasons.push('⏱ Shift incomplete — <strong>' + remShift + '</strong> remaining (8 hours required)');
     }
     if (targetMiss) {
-      const remTarget = secsToMMSS(targetSecs - S.currentDurSecs);
-      reasons.push('🎯 Daily target not achieved — <strong>' + remTarget + '</strong> remaining');
+      reasons.push('🎯 Daily target not achieved — <strong>' + targetRemStr + '</strong>');
     }
 
     document.getElementById('tl-check-row').innerHTML =
@@ -1006,7 +1103,8 @@ document.getElementById('btn-confirm-co').addEventListener('click', async () => 
 
   const res = await api({
     action:'clockOut', userId:U.userId, fullName:U.fullName, email:U.email, timestamp:now,
-    finalTarget:S.finalTarget, totalShiftSecs:totalShift, totalBreakSecs:totalBreak, totalIdleSecs:totalIdle
+    finalTarget:S.finalTarget, totalShiftSecs:totalShift, totalBreakSecs:totalBreak, totalIdleSecs:totalIdle,
+    process:S.process, currentCount:S.currentCount||0
   });
 
   document.getElementById('email-row').innerHTML =
@@ -1034,8 +1132,14 @@ async function addTask() {
   const dur  = document.getElementById('task-dur').value.trim();
 
   if (!slot) { toast('Select an hour slot.','warn'); return; }
-  if (!dur)  { toast('Enter a duration (MM:SS).','warn'); return; }
-  if (!isValidHMS(dur)) { openM('m-dur'); return; }
+  if (!dur)  { toast(isZomato() ? 'Enter a count (e.g. 25).' : 'Enter a duration (MM:SS).','warn'); return; }
+
+  if (isZomato()) {
+    const n = parseInt(dur);
+    if (isNaN(n) || n < 0) { toast('Enter a valid number (e.g. 25).','warn'); return; }
+  } else {
+    if (!isValidHMS(dur)) { openM('m-dur'); return; }
+  }
 
   const now = new Date().toISOString();
   const entry = { slot, text: slot, dur: dur, ts: now };
@@ -1048,7 +1152,7 @@ async function addTask() {
   renderTasks();
 
   const res = await api({ action:'logTask', userId:U.userId, fullName:U.fullName, email:U.email,
-    hourSlot:slot, taskText:slot, currentDuration:dur, timestamp:now });
+    hourSlot:slot, taskText:slot, currentDuration:dur, process:S.process, timestamp:now });
   if (res.offline) toast('⚡ Offline — task queued.','warn');
   else toast('📝 Task logged!','ok');
 
@@ -1062,23 +1166,47 @@ async function addTask() {
 ═══════════════════════════════════════════════════════════ */
 document.getElementById('btn-upd-prog').addEventListener('click', () => {
   const v = document.getElementById('cur-dur').value.trim();
-  if (!isValidHMS(v)) { openM('m-dur'); return; }
-  S.currentDurSecs = hmsToSecs(v);
-  saveS();
-  updateProgress();
-  toast(`📊 Progress updated: ${v}`,'ok');
+  if (isZomato()) {
+    const n = parseInt(v);
+    if (isNaN(n) || n < 0) { toast('Enter a valid number (e.g. 25).','warn'); return; }
+    S.currentCount = n;
+    saveS();
+    updateProgress();
+    toast('📊 Count updated: ' + n, 'ok');
+  } else {
+    if (!isValidHMS(v)) { openM('m-dur'); return; }
+    S.currentDurSecs = hmsToSecs(v);
+    saveS();
+    updateProgress();
+    toast('📊 Progress updated: ' + v, 'ok');
+  }
 });
 
 function updateProgress() {
-  const targetSecs = hmsToSecs(U?.dailyTarget || '00:00:00') || 0;
-  const cur = S.currentDurSecs || 0;
-  const pct = targetSecs > 0 ? Math.min(100, Math.round(cur/targetSecs*100)) : 0;
-  document.getElementById('pbar').style.width = pct+'%';
-  document.getElementById('prog-text').textContent = `${secsToMMSS(cur)} / ${U?.dailyTarget||'—'}`;
-  document.getElementById('prog-pct').textContent  = targetSecs ? pct+'%' : '';
-  if (pct >= 100) {
-    document.getElementById('pbar').style.background = 'linear-gradient(90deg,var(--green),#a3e635)';
-    toast('🎉 Daily target reached!','ok');
+  if (isZomato()) {
+    // Numeric count mode
+    const dailyTargetNum = parseInt(U?.dailyTargetCount) || parseInt(U?.dailyTargetNum) || parseInt(U?.dailyTarget) || 0;
+    const cur  = S.currentCount || 0;
+    const pct  = dailyTargetNum > 0 ? Math.min(100, Math.round(cur/dailyTargetNum*100)) : 0;
+    document.getElementById('pbar').style.width = pct+'%';
+    document.getElementById('prog-text').textContent = cur + ' / ' + (dailyTargetNum || '—');
+    document.getElementById('prog-pct').textContent  = dailyTargetNum ? pct+'%' : '';
+    if (pct >= 100) {
+      document.getElementById('pbar').style.background = 'linear-gradient(90deg,var(--green),#a3e635)';
+      toast('🎉 Daily target reached!','ok');
+    }
+  } else {
+    // Duration mode (Dhisha)
+    const targetSecs = hmsToSecs(U?.dailyTarget || '00:00:00') || 0;
+    const cur = S.currentDurSecs || 0;
+    const pct = targetSecs > 0 ? Math.min(100, Math.round(cur/targetSecs*100)) : 0;
+    document.getElementById('pbar').style.width = pct+'%';
+    document.getElementById('prog-text').textContent = secsToMMSS(cur) + ' / ' + (U?.dailyTarget||'—');
+    document.getElementById('prog-pct').textContent  = targetSecs ? pct+'%' : '';
+    if (pct >= 100) {
+      document.getElementById('pbar').style.background = 'linear-gradient(90deg,var(--green),#a3e635)';
+      toast('🎉 Daily target reached!','ok');
+    }
   }
 }
 
@@ -1253,7 +1381,8 @@ document.getElementById('btn-confirm-nc').addEventListener('click', async () => 
 
   await api({
     action:'clockOut', userId:U.userId, fullName:U.fullName, email:U.email, timestamp:now,
-    finalTarget:S.finalTarget, totalShiftSecs:totalShift, totalBreakSecs:totalBreak, totalIdleSecs:totalIdle
+    finalTarget:S.finalTarget, totalShiftSecs:totalShift, totalBreakSecs:totalBreak, totalIdleSecs:totalIdle,
+    process:S.process, currentCount:S.currentCount||0
   });
   await sendNonComplianceEmail(now, totalShift, totalBreak, totalIdle);
 
@@ -1271,7 +1400,9 @@ async function sendNonComplianceEmail(clockOutTime, shiftSecs, breakSecs, idleSe
   if (CONFIG.EMAILJS_PUBLIC_KEY === 'YOUR_EMAILJS_PUBLIC_KEY') return;
   try {
     emailjs.init(CONFIG.EMAILJS_PUBLIC_KEY);
-    const targetAchieved = S.currentDurSecs >= (hmsToSecs(U?.dailyTarget||'0')||0);
+    const targetAchieved = isZomato()
+      ? (S.currentCount||0) >= (parseInt(U?.dailyTargetCount||U?.dailyTargetNum||U?.dailyTarget)||0)
+      : S.currentDurSecs >= (hmsToSecs(U?.dailyTarget||'0')||0);
     const shiftComplete  = shiftSecs >= REQUIRED_SHIFT_SECS;
     const statusLines = [];
     if (!shiftComplete) statusLines.push('❌ Required shift hours not completed (8h required, worked ' + secsToHMS(shiftSecs) + ')');
