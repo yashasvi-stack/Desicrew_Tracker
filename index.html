@@ -903,17 +903,16 @@ function showLoginErr(msg) {
 function showDashboard() {
   document.getElementById('login-screen').classList.remove('active');
   document.getElementById('dashboard-screen').classList.add('active');
-
   document.getElementById('top-name').textContent = U.fullName;
   document.getElementById('top-av').textContent   = U.fullName[0].toUpperCase();
   const ini = U.fullName.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
-document.getElementById('pd-av').textContent       = ini;
-document.getElementById('pd-name').textContent     = U.fullName;
-document.getElementById('pd-role').textContent     = U.role || 'Employee';
-document.getElementById('pd-email').textContent    = U.email;
-document.getElementById('pd-role-row').textContent = (U.role||'Employee').charAt(0).toUpperCase()+(U.role||'Employee').slice(1);
-document.getElementById('pd-shift').textContent    = (U.shiftType||'day').charAt(0).toUpperCase()+(U.shiftType||'day').slice(1)+' Shift';
-document.getElementById('pd-target').textContent   = U.dailyTarget || '—';
+  document.getElementById('pd-av').textContent       = ini;
+  document.getElementById('pd-name').textContent     = U.fullName;
+  document.getElementById('pd-role').textContent     = U.role || 'Employee';
+  document.getElementById('pd-email').textContent    = U.email;
+  document.getElementById('pd-role-row').textContent = (U.role||'Employee').charAt(0).toUpperCase()+(U.role||'Employee').slice(1);
+  document.getElementById('pd-shift').textContent    = (U.shiftType||'day').charAt(0).toUpperCase()+(U.shiftType||'day').slice(1)+' Shift';
+  document.getElementById('pd-target').textContent   = U.dailyTarget || '—';
   document.getElementById('date-lbl').textContent = new Date().toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
 
   populateSlots();
@@ -1685,11 +1684,6 @@ function buildSummary() {
     `<div class="sumrow"><span class="sumtime">${t.slot}</span><span>${escH(t.text)}</span></div>`
   ).join('');
 }
-
-
-
-
-
 function toggleProfile() {
   document.getElementById('profile-dropdown').classList.toggle('open');
 }
@@ -1701,9 +1695,6 @@ document.addEventListener('click', e => {
     if (dd) dd.classList.remove('open');
   }
 });
-
-
-
 /* ═══════════════════════════════════════════════════════════
    MODAL HELPERS
 ═══════════════════════════════════════════════════════════ */
