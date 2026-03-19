@@ -1074,8 +1074,7 @@ document.getElementById('btn-co').addEventListener('click', async () => {
     openM('m-tl');
     document.getElementById('tl-modal-msg').innerHTML =
       'Clock-out blocked for the following reason(s):<br><br>' +
-      reasons.map(r => '&bull; ' + r).join('<br>') +
-      '<br><br>Your Team Lead must set <code style="color:var(--green)">TL Approval = Yes</code> in the Users sheet to allow early clock-out.';
+      reasons.map(r => '&bull; ' + r).join('<br>');
 
     const approved = await checkTLApproval();
     updateTLCheckRow(approved, '');
