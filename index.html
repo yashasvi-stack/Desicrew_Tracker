@@ -1655,7 +1655,7 @@ document.getElementById('btn-show-pass').addEventListener('click', () => {
   const icon = document.getElementById('eye-icon');
   const isPass = inp.type === 'password';
   inp.type = isPass ? 'text' : 'password';
-  icon.textContent = isPass ? '🔐' : '🔓';
+  icon.textContent = isPass ? '🔓' : '🔐';
 });
 
 function togglePassField(inputId, btn) {
@@ -1663,7 +1663,7 @@ function togglePassField(inputId, btn) {
   const icon = btn.querySelector('span');
   const isPass = inp.type === 'password';
   inp.type = isPass ? 'text' : 'password';
-  icon.textContent = isPass ? '🔐' : '🔓';
+  icon.textContent = isPass ? '🔓' : '🔐';
 }
 
 /* ═══════════════════════════════════════════════════════════
