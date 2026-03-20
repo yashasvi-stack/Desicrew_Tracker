@@ -339,6 +339,10 @@ textarea { resize: vertical; min-height: 68px; line-height: 1.6; }
       <h2>Employee Sign In</h2>
       <div class="field"><label>Email Address</label><input type="email" id="li-email" placeholder="you@desicrew.in" autocomplete="off"></div>
       <div class="field"><label>Password</label><input type="password" id="li-pass" placeholder="••••••••"></div>
+      <button class="pass-toggle" id="btn-show-pass" type="button" title="Show/hide password"><span id="eye-icon">👁</span></button>
+        </div>
+      </div>
+      <a class="forgot-link" id="btn-forgot-pw" onclick="openM('m-forgot')">Forgot password?</a>
       <button class="btn btn-green btn-login-full" id="btn-login">→ Sign In</button>
       <div id="login-error"></div>
       <div class="login-note" id="login-note" style="display:none;">🔐 Your login is managed by your admin. Contact them if you cannot access your account.</div>
