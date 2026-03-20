@@ -527,6 +527,26 @@ textarea { resize: vertical; min-height: 68px; line-height: 1.6; }
   </div>
 </div>
 
+<!-- FORGOT PASSWORD MODAL -->
+<div class="overlay" id="m-forgot">
+  <div class="modal">
+    <div class="mico">🔑</div>
+    <h3>Reset Password</h3>
+    <p>Enter your registered email. We'll send a one-time OTP to reset your password.</p>
+    <div class="field"><label>Registered Email</label><input type="email" id="fp-email" placeholder="you@desicrew.in"></div>
+    <div id="fp-step2" style="display:none;">
+      <div class="field"><label>Enter OTP (sent to your email)</label><input type="text" id="fp-otp-input" placeholder="6-digit code" maxlength="6"></div>
+      <div class="field"><label>New Password</label><div class="pass-wrap"><input type="password" id="fp-newpass" placeholder="New password"><button class="pass-toggle" onclick="togglePassField('fp-newpass',this)" type="button"><span>👁</span></button></div></div>
+      <div class="field"><label>Confirm Password</label><div class="pass-wrap"><input type="password" id="fp-confirmpass" placeholder="Confirm password"><button class="pass-toggle" onclick="togglePassField('fp-confirmpass',this)" type="button"><span>👁</span></button></div></div>
+    </div>
+    <div id="fp-status" style="font-size:12px;margin-bottom:10px;min-height:18px;"></div>
+    <div class="mactions">
+      <button class="btn btn-ghost" onclick="closeForgot()">Cancel</button>
+      <button class="btn btn-green" id="btn-fp-send" style="width:auto;">Send OTP</button>
+    </div>
+  </div>
+</div>
+
 <div id="toasts"></div>
 
 <!-- Night shift hourly reminder -->
@@ -579,6 +599,7 @@ const CONFIG = {
   // EmailJS — sign up at https://emailjs.com (free)
   EMAILJS_SERVICE_ID:  'service_a2gw4aw',
   EMAILJS_TEMPLATE_ID: 'template_aqp7ojj',
+  EMAILJS_OTP_TEMPLATE_ID: 'template_ul1rts8', // OTP-only template (separate!)
   EMAILJS_PUBLIC_KEY:  'ogon2tHgn2U3SEedB',
 
   IDLE_MS: 60 * 1000,  // 1 minute idle threshold
@@ -1608,6 +1629,165 @@ function fmtTime(iso) {
   return new Date(iso).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
 }
 function delay(ms) { return new Promise(r=>setTimeout(r,ms)); }
+
+/* ═══════════════════════════════════════════════════════════
+   SHOW / HIDE PASSWORD
+   → btn-show-pass toggles li-pass type on login page
+   → togglePassField() used inside forgot-password modal
+═══════════════════════════════════════════════════════════ */
+document.getElementById('btn-show-pass').addEventListener('click', () => {
+  const inp  = document.getElementById('li-pass');
+  const icon = document.getElementById('eye-icon');
+  const isPass = inp.type === 'password';
+  inp.type = isPass ? 'text' : 'password';
+  icon.textContent = isPass ? '🙈' : '👁';
+});
+
+function togglePassField(inputId, btn) {
+  const inp  = document.getElementById(inputId);
+  const icon = btn.querySelector('span');
+  const isPass = inp.type === 'password';
+  inp.type = isPass ? 'text' : 'password';
+  icon.textContent = isPass ? '🙈' : '👁';
+}
+
+/* ═══════════════════════════════════════════════════════════
+   FORGOT PASSWORD FLOW
+   Step 1 → validate email in sheet → generate OTP → send via EmailJS
+   Step 2 → verify OTP → POST new password → Apps Script updates sheet
+═══════════════════════════════════════════════════════════ */
+let fp_otp = null, fp_otpExpiry = null, fp_userEmail = null;
+
+document.getElementById('btn-fp-send').addEventListener('click', () => {
+  if (document.getElementById('fp-step2').style.display === 'none') {
+    forgotStep1();
+  } else {
+    forgotStep2();
+  }
+});
+
+function closeForgot() {
+  closeM('m-forgot');
+  ['fp-email','fp-otp-input','fp-newpass','fp-confirmpass'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.value = ''; el.disabled = false; }
+  });
+  document.getElementById('fp-step2').style.display = 'none';
+  document.getElementById('fp-status').innerHTML = '';
+  document.getElementById('btn-fp-send').textContent = 'Send OTP';
+  fp_otp = null; fp_otpExpiry = null; fp_userEmail = null;
+}
+
+async function forgotStep1() {
+  const email    = document.getElementById('fp-email').value.trim();
+  const statusEl = document.getElementById('fp-status');
+  const btn      = document.getElementById('btn-fp-send');
+
+  if (!email) { statusEl.innerHTML = '<span style="color:var(--red)">Please enter your email address.</span>'; return; }
+
+  statusEl.innerHTML = '<span class="spin">⟳</span> Checking email…';
+  btn.disabled = true;
+
+  const res = await api({ action: 'checkEmail', email });
+  btn.disabled = false;
+
+  if (!res.ok || !res.exists) {
+    statusEl.innerHTML = '<span style="color:var(--red)">❌ No account found with that email. Contact your admin.</span>';
+    return;
+  }
+
+  // Generate 6-digit OTP
+  fp_otp       = String(Math.floor(100000 + Math.random() * 900000));
+  fp_otpExpiry = Date.now() + 5 * 60 * 1000;
+  fp_userEmail = email;
+
+  const sent = await sendOTPEmail(email, res.fullName || email, fp_otp);
+  if (!sent) {
+    statusEl.innerHTML = '<span style="color:var(--red)">❌ Failed to send OTP. Check EmailJS config.</span>';
+    return;
+  }
+
+  document.getElementById('fp-email').disabled = true;
+  document.getElementById('fp-step2').style.display = 'block';
+  document.getElementById('btn-fp-send').textContent = 'Reset Password';
+  statusEl.innerHTML = '<span style="color:var(--green)">✅ OTP sent to ' + email + ' — valid for 5 minutes.</span>';
+}
+
+async function forgotStep2() {
+  const otp     = document.getElementById('fp-otp-input').value.trim();
+  const newPass = document.getElementById('fp-newpass').value;
+  const confPas = document.getElementById('fp-confirmpass').value;
+  const statusEl = document.getElementById('fp-status');
+  const btn     = document.getElementById('btn-fp-send');
+
+  if (!otp)              { statusEl.innerHTML = '<span style="color:var(--red)">Enter the OTP.</span>'; return; }
+  if (otp !== fp_otp)    { statusEl.innerHTML = '<span style="color:var(--red)">❌ Incorrect OTP.</span>'; return; }
+  if (Date.now() > fp_otpExpiry) { statusEl.innerHTML = '<span style="color:var(--red)">❌ OTP expired. Start again.</span>'; closeForgot(); return; }
+  if (!newPass)          { statusEl.innerHTML = '<span style="color:var(--red)">Enter a new password.</span>'; return; }
+  if (newPass.length < 6){ statusEl.innerHTML = '<span style="color:var(--red)">Password must be at least 6 characters.</span>'; return; }
+  if (newPass !== confPas){ statusEl.innerHTML = '<span style="color:var(--red)">Passwords do not match.</span>'; return; }
+
+  statusEl.innerHTML = '<span class="spin">⟳</span> Updating password…';
+  btn.disabled = true;
+
+  const res = await api({ action: 'resetPassword', email: fp_userEmail, newPassword: newPass });
+  btn.disabled = false;
+
+  if (!res.ok) {
+    statusEl.innerHTML = '<span style="color:var(--red)">❌ ' + (res.error || 'Update failed.') + '</span>';
+    return;
+  }
+
+  statusEl.innerHTML = '<span style="color:var(--green)">✅ Password updated! You can now sign in.</span>';
+  setTimeout(() => closeForgot(), 2000);
+}
+
+async function sendOTPEmail(email, name, otp) {
+  // Dev mode — if EmailJS keys not set, show OTP in toast for testing
+  if (CONFIG.EMAILJS_PUBLIC_KEY === 'YOUR_EMAILJS_PUBLIC_KEY') {
+    console.log('DEV MODE OTP for', email, ':', otp);
+    toast('DEV MODE — OTP: ' + otp + ' (check console)', 'info');
+    return true;
+  }
+
+  // Must have a separate OTP template configured
+  if (!CONFIG.EMAILJS_OTP_TEMPLATE_ID ||
+       CONFIG.EMAILJS_OTP_TEMPLATE_ID === 'YOUR_EMAILJS_OTP_TEMPLATE_ID') {
+    // Fallback: show OTP in a visible alert so user can still reset
+    const shown = prompt(
+      'EMAIL NOT CONFIGURED\n\n' +
+      'Your OTP is: ' + otp + '\n\n' +
+      'Please set EMAILJS_OTP_TEMPLATE_ID in CONFIG.\n' +
+      'Copy the OTP above and click OK to continue.'
+    );
+    return true; // allow flow to continue
+  }
+
+  try {
+    emailjs.init(CONFIG.EMAILJS_PUBLIC_KEY);
+    // Send ONLY otp-specific variables — never mix with shift report variables
+    const r = await emailjs.send(
+      CONFIG.EMAILJS_SERVICE_ID,
+      CONFIG.EMAILJS_OTP_TEMPLATE_ID,
+      {
+        email:      email,       // {{email}} → To Email in EmailJS OTP template
+        to_name:    name,        // {{to_name}}
+        from_name:  'PerformX',  // {{from_name}}
+        otp_code:   otp,         // {{otp_code}}
+        expiry_min: '5',         // {{expiry_min}}
+      }
+    );
+    return r.status === 200;
+  } catch(e) {
+    console.error('OTP email error:', e);
+    // Fallback to prompt so user can still reset even if email fails
+    const shown = prompt(
+      'OTP email failed. Your OTP is: ' + otp +
+      '\nCopy it and click OK to continue.'
+    );
+    return true;
+  }
+}
 
 /* ═══════════════════════════════════════════════════════════
    BOOT
