@@ -124,6 +124,14 @@ textarea { resize: vertical; min-height: 68px; line-height: 1.6; }
 .btn-login-full:hover { background: var(--green2); box-shadow: 0 4px 16px rgba(0,150,199,.3); }
 .login-note { margin-top: 16px; background: rgba(0,150,199,.05); border: 1px solid rgba(0,150,199,.15); border-radius: var(--r-sm); padding: 11px 13px; font-size: 11px; color: #0077a3; line-height: 1.7; }
 #login-error { display: none; margin-top: 12px; background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.25); border-radius: var(--r-sm); padding: 10px 13px; font-size: 12px; color: var(--red); }
+/* ── Show/Hide Password ── */
+.pass-wrap { position: relative; }
+.pass-wrap input { padding-right: 42px; }
+.pass-toggle { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--muted); font-size: 16px; line-height: 1; padding: 0; display: flex; align-items: center; }
+.pass-toggle:hover { color: var(--green); }
+/* ── Forgot Password ── */
+.forgot-link { display: block; text-align: right; margin-top: -8px; margin-bottom: 16px; font-size: 12px; color: var(--green); cursor: pointer; font-weight: 500; }
+.forgot-link:hover { color: var(--green2); text-decoration: underline; }
 
 /* ═══════════════════════════════════════════════════════════
    DASHBOARD
@@ -527,7 +535,7 @@ textarea { resize: vertical; min-height: 68px; line-height: 1.6; }
   </div>
 </div>
 
-<!-- FORGOT PASSWORD MODAL -->
+<!-- FORGOT PASSWORD MODALa -->
 <div class="overlay" id="m-forgot">
   <div class="modal">
     <div class="mico">🔑</div>
