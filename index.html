@@ -406,11 +406,17 @@ textarea { resize: vertical; min-height: 68px; line-height: 1.6; }
         <div class="ptitle">Shift Controls</div>
 
         <!-- Clock-in timestamp + late badge -->
-        <div id="ci-time-row" style="display:none;margin-bottom:12px;padding:10px 14px;background:var(--s3);border-radius:var(--r-sm);border:1.5px solid var(--border);font-size:12px;font-weight:500;">
-          <span style="color:var(--muted2);">Clocked in at:</span>
-          <span id="ci-time-display" style="color:var(--green);font-weight:500;margin-left:6px;"></span>
-          <span id="late-badge" style="display:none;margin-left:10px;color:var(--red);font-size:10px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);padding:2px 8px;border-radius:999px;"></span>
-        </div>
+        <div id="ci-time-row" style="display:none;margin-bottom:12px;padding:10px 14px;background:var(--s3);border-radius:var(--r-sm);border:1.5px solid var(--border);font-size:12px;font-weight:500;display:none;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+  <div>
+    <span style="color:var(--muted2);">Clocked in at:</span>
+    <span id="ci-time-display" style="color:var(--green);font-weight:600;margin-left:6px;"></span>
+    <span id="late-badge" style="display:none;margin-left:10px;color:var(--red);font-size:10px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);padding:2px 8px;border-radius:999px;"></span>
+  </div>
+  <div style="display:flex;align-items:center;gap:6px;">
+    <span style="color:var(--muted2);">Total Shift:</span>
+    <span id="total-shift-display" style="color:var(--green);font-weight:700;font-family:var(--ff-mono);font-size:14px;letter-spacing:.05em;">00:00:00</span>
+  </div>
+</div>
 
         <!-- 3 Segment metrics -->
         <div class="metrics-grid">
@@ -872,6 +878,9 @@ function startShiftTick() {
   shiftTick = setInterval(() => {
     if (!S.clockInTime) return;
     const totalElapsed = Date.now() - new Date(S.clockInTime).getTime();
+// Total shift duration (raw wall-clock time from clock-in, never stops until clock-out)
+const totalShiftEl = document.getElementById('total-shift-display');
+if (totalShiftEl) totalShiftEl.textContent = secsToHMS(Math.round(totalElapsed/1000));
 
     // Segment 2: break total (completed + live current break)
     const brkCompleted = (S.breaks||[]).reduce((a,b)=>a+b.durSecs,0);
@@ -1380,7 +1389,7 @@ function calcLateMinutes(clockInISO, shiftStartStr) {
 
 function showClockInTime(iso) {
   const row = document.getElementById('ci-time-row');
-  row.style.display = 'block';
+  row.style.display = 'flex';
   document.getElementById('ci-time-display').textContent = fmtTime(iso);
   const badge = document.getElementById('late-badge');
   if (S.lateMinutes > 0) {
