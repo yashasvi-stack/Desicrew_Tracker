@@ -468,7 +468,7 @@ textarea { resize: vertical; min-height: 68px; line-height: 1.6; }
           <div class="pbar-labels"><span id="prog-text">0 / —</span><span id="prog-pct-wrap"><span id="hg-icon" class="hg-anim">⏳</span><span id="prog-pct" style="font-size:16px;font-weight:700;color:var(--green);">0%</span></span></div>
         </div>
         <div class="final-wrap">
-          <label id="final-target-label">⚠ Final Target (MM:SS) — required before clock-out</label>
+          <label id="final-target-label">⚠ Final Count (MM:SS) — required before clock-out</label>
           <input type="text" id="final-target" placeholder="02:30" style="margin-top:6px;">
           <div class="dur-hint" id="dur-hint-text">Format: MM:SS — e.g. 02:30 = 2 mins 30 secs, 90:00 = 90 minutes</div>
         </div>
@@ -617,7 +617,7 @@ const CONFIG = {
   EMAILJS_OTP_TEMPLATE_ID: 'template_ul1rts8', // OTP-only template (separate!)
   EMAILJS_PUBLIC_KEY:  'ogon2tHgn2U3SEedB',
 
-  IDLE_MS: 60 * 1000,  // 1 minute idle threshold
+  IDLE_MS: 8 * 1000,   // 8 seconds idle threshold
 };
 
 /* ═══════════════════════════════════════════════════════════
@@ -871,19 +871,22 @@ function startShiftTick() {
   if (shiftTick) clearInterval(shiftTick);
   shiftTick = setInterval(() => {
     if (!S.clockInTime) return;
-    const el = Date.now() - new Date(S.clockInTime).getTime();
-    const t  = secsToHMS(el/1000);
-    document.getElementById('live-clock').textContent = t;
-    document.getElementById('big-timer').textContent  = t;
+    const totalElapsed = Date.now() - new Date(S.clockInTime).getTime();
 
-    // Segment 1: shift (already updated above)
-    // Segment 2: break total (includes live current break if on break)
+    // Segment 2: break total (completed + live current break)
     const brkCompleted = (S.breaks||[]).reduce((a,b)=>a+b.durSecs,0);
     const brkLive = S.onBreak && S.breakStartTime
       ? Math.round((Date.now()-new Date(S.breakStartTime).getTime())/1000) : 0;
     const brkTotal = brkCompleted + brkLive;
     document.getElementById('break-seg-dur').textContent = secsToHMS(brkTotal);
     document.getElementById('break-seg-count').textContent = (S.breaks||[]).length + (S.onBreak ? ' (on break)' : '');
+
+    // Segment 1: NET shift = total elapsed MINUS all break time
+    // Shift timer PAUSES during break, resumes when break ends
+    const netShiftSecs = Math.max(0, Math.round(totalElapsed/1000) - brkTotal);
+    const t = secsToHMS(netShiftSecs);
+    document.getElementById('live-clock').textContent = t;
+    document.getElementById('big-timer').textContent  = t;
 
     // Segment 3: idle total (sum of closed idles + current open idle if any)
     let idleTotal = (S.idles||[]).reduce((a,b)=>a+b.durSecs,0);
@@ -941,7 +944,7 @@ function resetIdle() {
   // If we were idle, record it
   if (S.idleStart) {
     const durSecs = Math.round((Date.now() - new Date(S.idleStart).getTime()) / 1000);
-    if (durSecs >= 10) {
+    if (durSecs >= 8) {
       const idleEnd = new Date().toISOString();
       const rec = { start: S.idleStart, end: idleEnd, durSecs };
       S.idles.push(rec);
