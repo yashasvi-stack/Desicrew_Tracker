@@ -883,7 +883,13 @@ function startShiftTick() {
 
     // Segment 1: NET shift = total elapsed MINUS all break time
     // Shift timer PAUSES during break, resumes when break ends
-    const netShiftSecs = Math.max(0, Math.round(totalElapsed/1000) - brkTotal);
+    // Segment 1: NET shift = total elapsed MINUS break time MINUS idle time
+    // Shift timer PAUSES during break AND during idle, resumes when active
+    const idleCompleted = (S.idles||[]).reduce((a,b)=>a+b.durSecs,0);
+    const idleLive = S.idleStart
+      ? Math.round((Date.now()-new Date(S.idleStart).getTime())/1000) : 0;
+    const idleTotal2 = idleCompleted + idleLive;
+    const netShiftSecs = Math.max(0, Math.round(totalElapsed/1000) - brkTotal - idleTotal2);
     const t = secsToHMS(netShiftSecs);
     document.getElementById('live-clock').textContent = t;
     document.getElementById('big-timer').textContent  = t;
@@ -973,11 +979,15 @@ function resetIdle() {
 
 // Also catch tab visibility change
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden && S.shiftActive && !S.onBreak) {
-    S.idleStart = S.idleStart || new Date().toISOString();
-    saveS();
-  } else if (!document.hidden) {
-    resetIdle();
+  if (!document.hidden && S.shiftActive && !S.onBreak) {
+    // User came back to tab — reset the 8s idle countdown fresh
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      if (!S.shiftActive || S.onBreak) return;
+      S.idleStart = new Date().toISOString();
+      saveS();
+      document.getElementById('idle-strip').classList.add('show');
+    }, CONFIG.IDLE_MS);
   }
 });
 
