@@ -911,7 +911,7 @@ if (totalShiftEl) totalShiftEl.textContent = secsToHMS(Math.round(totalElapsed/1
     // burnout nudge >5h no break
     const sb = document.getElementById('btn-sb');
     const noBreak = !S.onBreak && (S.breaks||[]).length === 0;
-    if (noBreak && el > 5*3600*1000) {
+    if (noBreak && totalElapsed > 5*3600*1000) {
       sb.classList.add('burn');
       sb.querySelector('.ico').textContent = '⚠️';
     } else if (!S.onBreak) {
@@ -921,7 +921,7 @@ if (totalShiftEl) totalShiftEl.textContent = secsToHMS(Math.round(totalElapsed/1
 
     // hourly badge + night shift browser notification
     const badge = document.getElementById('hourly-badge');
-    const since = lastHourlyTs ? Date.now() - lastHourlyTs : el;
+    const since = lastHourlyTs ? Date.now() - lastHourlyTs : totalElapsed;
     if (since >= 3600*1000) {
       badge.innerHTML = '<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.28);color:var(--amber);font-size:10px;padding:2px 8px;border-radius:999px;">⏰ Hourly update due</span>';
       triggerHourlyReminder();
@@ -949,35 +949,60 @@ function stopBreakTick() {
 
 /* ═══════════════════════════════════════════════════════════
    IDLE DETECTION
-   Two modes — auto-detected:
-   1. EXTENSION MODE: Chrome extension monitors ALL tabs/apps globally
-      → receives IDLE_START / IDLE_END messages from extension
-   2. FALLBACK MODE:  Extension not installed — tab-level only (8s)
-      → uses mouse/keyboard events inside PerformX tab
+   Two modes — auto-detected on clock-in:
+   1. EXTENSION MODE: chrome.idle API — true OS-level detection
+      Works across ALL tabs, apps, windows
+   2. FALLBACK MODE: Tab-level only — used if extension not installed
+      Only detects inactivity inside PerformX tab
 ═══════════════════════════════════════════════════════════ */
 let idleTimer       = null;
-let extensionActive = false;  // flips true when extension sends first signal
+let extensionActive = false;
 
-// ── Listen for messages FROM the Chrome extension ─────────
-// Extension background.js detects global activity across ALL tabs/apps
-// and sends IDLE_START / IDLE_END / ACTIVITY messages here
-if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+// ── Check if extension is installed on clock-in ───────────
+function checkExtensionInstalled() {
+  if (typeof chrome === 'undefined' || !chrome.runtime) {
+    extensionActive = false;
+    console.log('PerformX: No extension detected, using tab-level idle fallback.');
+    startFallbackCountdown();
+    return;
+  }
   try {
-    chrome.runtime.onMessage.addListener((msg) => {
-      if (!msg || !msg.type) return;
-      extensionActive = true;   // extension is installed and talking to us
-
-      if (msg.type === 'IDLE_START') {
-        // Global idle detected — user inactive across all tabs/apps
-        onIdleStart(msg.idleStartTs || new Date().toISOString());
-      }
-      if (msg.type === 'IDLE_END' || msg.type === 'ACTIVITY') {
-        // User became active anywhere
-        onIdleEnd();
+    chrome.runtime.sendMessage({ type: 'GET_STATUS' }, (res) => {
+      if (chrome.runtime.lastError || !res) {
+        extensionActive = false;
+        console.log('PerformX: Extension not responding, using tab-level fallback.');
+        startFallbackCountdown();
+      } else {
+        extensionActive = true;
+        console.log('PerformX: Extension connected! Using OS-level idle detection.');
+        if (res.isIdle) onIdleStart(res.idleStartTs || new Date().toISOString());
       }
     });
-  } catch(_) {}
+  } catch(_) {
+    extensionActive = false;
+    startFallbackCountdown();
+  }
 }
+
+// ── Listen for messages FROM the extension ────────────────
+// content.js bridges background→page via window CustomEvent 'performx-ext'
+// This works on file:// and http:// pages (chrome.runtime.onMessage does NOT)
+window.addEventListener('performx-ext', (e) => {
+  const msg = e.detail;
+  if (!msg || !msg.type) return;
+  extensionActive = true;
+  clearTimeout(idleTimer);  // stop fallback timer — extension takes over
+
+  if (msg.type === 'PING') {
+    console.log('[PerformX] Extension connected ✓ — global idle tracking active');
+  }
+  if (msg.type === 'IDLE_START') {
+    onIdleStart(msg.idleStartTs || new Date().toISOString());
+  }
+  if (msg.type === 'IDLE_END' || msg.type === 'ACTIVITY') {
+    onIdleEnd();
+  }
+});
 
 // ── Idle begins ────────────────────────────────────────────
 function onIdleStart(idleStartISO) {
