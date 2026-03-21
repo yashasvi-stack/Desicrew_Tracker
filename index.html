@@ -358,7 +358,7 @@ textarea { resize: vertical; min-height: 68px; line-height: 1.6; }
 
   <!-- idle strip -->
   <div id="idle-strip">
-    😴 &nbsp;You've been idle for 1+ minute — are you on a break?
+    😴 &nbsp;You've been idle for 8+ Seconds — are you on a break?
     <button class="is-btn" id="is-break-btn">Start Break</button>
     <button class="is-btn dismiss" id="is-dismiss-btn">Still Working</button>
   </div>
@@ -572,7 +572,7 @@ textarea { resize: vertical; min-height: 68px; line-height: 1.6; }
 
 <!-- Night shift hourly reminder -->
 <div id="night-reminder">
-  <button class="nr-close" onclick="document.getElementById('night-reminder').classList.remove('show'); clearInterval(hourlyReminderInterval);">✕</button>
+  <button class="nr-close" onclick="document.getElementById('night-reminder').classList.remove('show');">✕</button>
   <div class="nr-title">⏰ Hourly Task Update Due</div>
   <div class="nr-body" id="nr-msg">Please update your hourly task log.</div>
 </div>
@@ -1215,10 +1215,13 @@ async function addTask() {
   recalcProgressFromTasks();
 
   // Clear hourly nag — user has logged
-  clearInterval(hourlyReminderInterval);
-  document.getElementById('night-reminder').classList.remove('show');
+  // Clear hourly nag ONLY if user logged for the slot that was nagging
+  if (!nagSlot || slot === nagSlot) {
+    clearInterval(hourlyReminderInterval);
+    document.getElementById('night-reminder').classList.remove('show');
+    nagSlot = null;
+  }
 }
-
 /* ═══════════════════════════════════════════════════════════
    PROGRESS UPDATE
 ═══════════════════════════════════════════════════════════ */
@@ -1503,51 +1506,77 @@ function requestNotifPermission() {
   }
 }
 
+// Track which hour slot the reminder was triggered for
+let nagSlot = null;
+
 function triggerHourlyReminder() {
   const now = Date.now();
-  // Throttle: only fire the FIRST trigger once per hour window
+  // Throttle: only fire once per hour window
   if (lastNightReminderTs && (now - lastNightReminderTs) < 55 * 60 * 1000) return;
   lastNightReminderTs = now;
 
-  const slot = getCurrentHourSlot();
-  const msg = slot
-    ? `⏰ Please update your ${slot} hourly task log.`
+  nagSlot = getCurrentHourSlot();
+  const msg = nagSlot
+    ? '⏰ Please update your ' + nagSlot + ' hourly task log.'
     : '⏰ Please update your hourly task log.';
 
   showHourlyNag(msg);
 
-  // Start nagging every 2 minutes until user logs a task
+  // Repeat every 2 minutes — ONLY stops when user logs a task for THIS slot
   clearInterval(hourlyReminderInterval);
   hourlyReminderInterval = setInterval(() => {
-    // Stop nagging if user has logged since the reminder started
-    if (lastHourlyTs && (Date.now() - lastHourlyTs) < 3600*1000) {
+    // Check if user has logged a task for the CURRENT nag slot
+    const tasks = S.tasks || [];
+    const loggedThisSlot = tasks.some(t => t.slot === nagSlot);
+    if (loggedThisSlot) {
       clearInterval(hourlyReminderInterval);
       document.getElementById('night-reminder').classList.remove('show');
       return;
     }
+    // Still not logged — keep nagging
     showHourlyNag(msg);
   }, 2 * 60 * 1000); // every 2 min
 }
 
 function showHourlyNag(msg) {
-  // In-page persistent banner (stays until dismissed OR task logged)
+  // In-page banner — stays visible, ✕ only hides visually but nag continues
   const nr = document.getElementById('night-reminder');
   document.getElementById('nr-msg').textContent = msg;
   nr.classList.add('show');
-  // No auto-hide — stays until user acts
 
-  // Browser notification (fires even in another tab)
-  if ('Notification' in window && Notification.permission === 'granted') {
-    try {
-      const n = new Notification('PulseTrack — Hourly Update Due', {
-        body: msg,
-        icon: 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><circle cx=%2216%22 cy=%2216%22 r=%2216%22 fill=%22%230096c7%22/><text x=%2216%22 y=%2221%22 text-anchor=%22middle%22 font-size=%2216%22 fill=%22white%22>P</text></svg>',
-        requireInteraction: true,   // stays until user clicks it
-        tag: 'pulsetrack-hourly',   // replaces previous notification instead of stacking
+  // Browser notification — fires even when user is in another tab/app
+  if ('Notification' in window) {
+    if (Notification.permission === 'granted') {
+      fireNotification(msg);
+    } else if (Notification.permission === 'default') {
+      // Request permission then fire
+      Notification.requestPermission().then(p => {
+        if (p === 'granted') fireNotification(msg);
       });
-      n.onclick = () => { window.focus(); n.close(); };
-    } catch(_) {}
+    }
   }
+}
+
+function fireNotification(msg) {
+  try {
+    // Close any existing hourly notification first
+    if (window._hourlyNotif) {
+      try { window._hourlyNotif.close(); } catch(_) {}
+    }
+    const n = new Notification('PerformX — Hourly Update Required', {
+      body: msg,
+      icon: 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22><circle cx=%2216%22 cy=%2216%22 r=%2216%22 fill=%22%230096c7%22/><text x=%2216%22 y=%2221%22 text-anchor=%22middle%22 font-size=%2216%22 fill=%22white%22>P</text></svg>',
+      requireInteraction: true,
+      tag: 'performx-hourly-' + Date.now(),
+      silent: false,
+    });
+    window._hourlyNotif = n;
+    n.onclick = () => {
+      window.focus();
+      document.getElementById('night-reminder').classList.add('show');
+      n.close();
+    };
+  } catch(_) {}
 }
 
 function getCurrentHourSlot() {
