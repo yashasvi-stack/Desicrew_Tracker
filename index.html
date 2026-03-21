@@ -948,23 +948,57 @@ function stopBreakTick() {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   IDLE DETECTION (tab-level)
+   IDLE DETECTION
+   Two modes — auto-detected:
+   1. EXTENSION MODE: Chrome extension monitors ALL tabs/apps globally
+      → receives IDLE_START / IDLE_END messages from extension
+   2. FALLBACK MODE:  Extension not installed — tab-level only (8s)
+      → uses mouse/keyboard events inside PerformX tab
 ═══════════════════════════════════════════════════════════ */
-let idleTimer = null;
+let idleTimer       = null;
+let extensionActive = false;  // flips true when extension sends first signal
 
-function resetIdle() {
+// ── Listen for messages FROM the Chrome extension ─────────
+// Extension background.js detects global activity across ALL tabs/apps
+// and sends IDLE_START / IDLE_END / ACTIVITY messages here
+if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+  try {
+    chrome.runtime.onMessage.addListener((msg) => {
+      if (!msg || !msg.type) return;
+      extensionActive = true;   // extension is installed and talking to us
+
+      if (msg.type === 'IDLE_START') {
+        // Global idle detected — user inactive across all tabs/apps
+        onIdleStart(msg.idleStartTs || new Date().toISOString());
+      }
+      if (msg.type === 'IDLE_END' || msg.type === 'ACTIVITY') {
+        // User became active anywhere
+        onIdleEnd();
+      }
+    });
+  } catch(_) {}
+}
+
+// ── Idle begins ────────────────────────────────────────────
+function onIdleStart(idleStartISO) {
+  if (!S.shiftActive || S.onBreak) return;
+  if (S.idleStart) return;  // already tracking idle
+  S.idleStart = idleStartISO;
+  saveS();
+  document.getElementById('idle-strip').classList.add('show');
+}
+
+// ── User active again ──────────────────────────────────────
+function onIdleEnd() {
   clearTimeout(idleTimer);
   document.getElementById('idle-strip').classList.remove('show');
 
-  // If we were idle, record it
   if (S.idleStart) {
     const durSecs = Math.round((Date.now() - new Date(S.idleStart).getTime()) / 1000);
     if (durSecs >= 8) {
       const idleEnd = new Date().toISOString();
-      const rec = { start: S.idleStart, end: idleEnd, durSecs };
-      S.idles.push(rec);
+      S.idles.push({ start: S.idleStart, end: idleEnd, durSecs });
       saveS();
-      // persist to sheet
       api({ action:'logIdle', userId:U.userId, fullName:U.fullName, email:U.email,
             idleStart:S.idleStart, idleEnd, durationSecs:durSecs });
     }
@@ -972,31 +1006,43 @@ function resetIdle() {
     saveS();
   }
 
-  if (!S.shiftActive || S.onBreak) return;
+  // Restart fallback countdown
+  if (!extensionActive) startFallbackCountdown();
+}
 
+// ── FALLBACK: countdown timer when extension not installed ─
+function startFallbackCountdown() {
+  clearTimeout(idleTimer);
+  if (!S.shiftActive || S.onBreak || extensionActive) return;
   idleTimer = setTimeout(() => {
-    if (!S.shiftActive || S.onBreak) return;
-    S.idleStart = new Date().toISOString();
-    saveS();
-    document.getElementById('idle-strip').classList.add('show');
+    if (!S.shiftActive || S.onBreak || extensionActive) return;
+    onIdleStart(new Date().toISOString());
   }, CONFIG.IDLE_MS);
 }
 
+// resetIdle alias used by break/clockout handlers
+function resetIdle() {
+  if (extensionActive) {
+    document.getElementById('idle-strip').classList.remove('show');
+    return;
+  }
+  onIdleEnd();
+}
+
+// Fallback: mouse/keyboard events inside PerformX tab only
 ['mousemove','keydown','click','touchstart','scroll'].forEach(e =>
-  document.addEventListener(e, resetIdle, { passive: true })
+  document.addEventListener(e, () => {
+    if (extensionActive) return;  // extension handles it globally
+    if (S.idleStart) onIdleEnd();
+    else startFallbackCountdown();
+  }, { passive: true })
 );
 
-// Also catch tab visibility change
+// Tab visibility — fallback mode only
 document.addEventListener('visibilitychange', () => {
+  if (extensionActive) return;
   if (!document.hidden && S.shiftActive && !S.onBreak) {
-    // User came back to tab — reset the 8s idle countdown fresh
-    clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => {
-      if (!S.shiftActive || S.onBreak) return;
-      S.idleStart = new Date().toISOString();
-      saveS();
-      document.getElementById('idle-strip').classList.add('show');
-    }, CONFIG.IDLE_MS);
+    startFallbackCountdown();
   }
 });
 
