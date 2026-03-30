@@ -11,7 +11,7 @@ const CONFIG = {
   EMAILJS_SERVICE_ID:  'service_a2gw4aw',
   EMAILJS_TEMPLATE_ID: 'template_aqp7ojj',
   EMAILJS_OTP_TEMPLATE_ID: 'template_ul1rts8', // OTP-only template (separate!)
-  EMAILJS_PUBLIC_KEY:  'ogon2tHgn2U3SEedB',
+  EMAILJS_PUBLIC_KEY:  'EWeSZW1e4zSeEgV-w',
 
   IDLE_MS: 8 * 1000,   // 8 seconds idle threshold
 };
